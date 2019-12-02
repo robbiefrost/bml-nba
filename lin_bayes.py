@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from Clean import Clean
 
 
-df = pd.read_csv('FM_2000-2019.csv')
+df = pd.read_csv('./data/FM_2000-2019.csv')
 print(df.shape)
 df_all = df[df['gp_all_0_a'] >= 30]
 df = df_all[0:-100]
@@ -23,39 +23,84 @@ y = clean.get_target(q).values
 
 cols = features.columns
 x = features.values
-x1 = x
-print(type(x))
-print(x.shape)
-
-print(type(y))
 
 
-basic_model = pm.Model()
+def run_basic_model():
 
-with basic_model:
+    basic_model = pm.Model()
 
-    # Priors for unknown model parameters
-    alpha = pm.Normal('alpha', mu=0, sigma=10)
-    beta = pm.Normal('beta', mu=0, sigma=1, shape=x.shape[1])
-    sigma = pm.HalfNormal('sigma', sigma=1)
 
-    # Expected value of outcome
-    mu = alpha + pm.math.dot(x,beta)
+    with basic_model:
 
-    # Likelihood (sampling distribution) of observations
-    Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
+        # Priors for unknown model parameters
+        alpha = pm.Normal('alpha', mu=0, sigma=10)
+        beta = pm.Normal('beta', mu=0, sigma=1, shape=x.shape[1])
+        sigma = pm.HalfNormal('sigma', sigma=1)
 
-    # instantiate sampler
-    # draw 500 posterior samples
+        # Expected value of outcome
+        mu = alpha + pm.math.dot(x,beta)
 
-    trace = pm.sample(cores=1,target_accept = 0.95)
+        # Likelihood (sampling distribution) of observations
+        Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
 
-    #pm.summary(trace).round(2)
-    #pm.plot_posterior(trace)
+    return basic_model
 
+
+def run_prior_model(prior):
+
+    prior_model = pm.Model()
+
+    for i in range(len(cols)):
+        print(i,cols[i])
+
+    with prior_model:
+
+        # Priors for unknown model parameters
+        alpha = pm.Normal('alpha', mu=0, sigma=100)
+
+        if prior == 'normal':
+            beta_def = pm.Normal('beta_def', mu=-1, sigma=1, shape=8)
+            beta_off = pm.Normal('beta_off', mu=1, sigma=1, shape=8)
+            beta_pace =pm.Normal('beta_pace', mu=1, sigma=1, shape=8)
+
+        if prior == 'uniform':
+            beta_def = pm.Uniform('beta_def', upper = 0, lower = -2, shape=8)
+            beta_off = pm.Uniform('beta_off', upper = 2, lower = 0, shape=8)
+            beta_pace =pm.Uniform('beta_pace', upper = 2, lower = 0, shape=8)
+
+        sigma = pm.HalfNormal('sigma', sigma=1)
+
+        # Expected value of outcome
+        mu = alpha
+        for i in ['off','def','pace']:
+
+            if i == 'off':
+
+                col_list = [j*3 for j in range(8)]
+                x = features.iloc[:,col_list].values
+                mu += pm.math.dot(x,beta_off)
+
+            elif i == 'def':
+
+                col_list = [j*3 + 1 for j in range(8)]
+                x = features.iloc[:,col_list].values
+                mu += pm.math.dot(x,beta_def)
+
+            elif i == 'pace':
+
+                col_list = [j*3 + 2 for j in range(8)]
+                x = features.iloc[:,col_list].values
+                mu += pm.math.dot(x,beta_pace)
+
+        # Likelihood (sampling distribution) of observations
+        Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=y)
+
+    return prior_model
+
+model = run_prior_model('normal')
+map_est = pm.find_MAP(model=model)
 
 '''
-map_est = pm.find_MAP(model=basic_model)
 a = map_est['alpha']
 b = map_est['beta']
 

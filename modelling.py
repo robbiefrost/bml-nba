@@ -78,23 +78,81 @@ class Modelling(object):
 
             self.reg.fit(features,Y)
 
-        elif self.model_type == 'MAP':
+        else:
+            prior = self.model_type.split('-')[-1]
+            self.prior = prior
+            if prior == 'basic':
+                x = features.values
 
-            x = features.values
-            
-            self.basic_model = pm.Model()
+                self.basic_model = pm.Model()
 
-            with self.basic_model:
-                # Priors for unknown model parameters
-                alpha = pm.Normal('alpha', mu=0, sigma=10)
-                beta = pm.Normal('beta', mu=0, sigma=1, shape=x.shape[1])
-                sigma = pm.HalfNormal('sigma', sigma=1)
+                with self.basic_model:
+                    # Priors for unknown model parameters
+                    alpha = pm.Normal('alpha', mu=0, sigma=10)
+                    beta = pm.Normal('beta', mu=0, sigma=1, shape=x.shape[1])
+                    sigma = pm.HalfNormal('sigma', sigma=1)
 
-                # Expected value of outcome
-                mu = alpha + pm.math.dot(x,beta)
+                    # Expected value of outcome
+                    mu = alpha + pm.math.dot(x,beta)
 
-                # Likelihood (sampling distribution) of observations
-                Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=Y)
+                    # Likelihood (sampling distribution) of observations
+                    Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=Y)
+            else:
+                cols = features.columns
+
+                print('building model with prior:', prior)
+                self.prior_model = pm.Model()
+
+                for i in range(len(cols)):
+                    print(i,cols[i])
+
+                with self.prior_model:
+
+                    # Priors for unknown model parameters
+                    alpha = pm.Normal('alpha', mu=0, sigma=10)
+
+                    if prior == 'normal':
+                        beta_def = pm.Normal('beta_def', mu=-.25, sigma=.25, shape=8)
+                        beta_off = pm.Normal('beta_off', mu=.25, sigma=.25, shape=8)
+                        beta_pace =pm.Normal('beta_pace', mu=.25, sigma=.25, shape=8)
+
+                    if prior == 'uniform':
+                        beta_def = pm.Uniform('beta_def', upper = 0, lower = -.5, shape=8)
+                        beta_off = pm.Uniform('beta_off', upper = .5, lower = 0, shape=8)
+                        beta_pace =pm.Uniform('beta_pace', upper = .5, lower = 0, shape=8)
+
+                    if prior == 'truncnormal':
+                        beta_def = pm.TruncatedNormal('beta_def', mu = -.25 , sigma=.25, upper = 0 , shape=8)
+                        beta_off = pm.TruncatedNormal('beta_off', mu = .25 , sigma=.25, lower = 0 , shape=8)
+                        beta_pace = pm.TruncatedNormal('beta_pace', mu = .25 , sigma=.25, lower = 0 , shape=8)
+
+
+                    sigma = pm.HalfNormal('sigma', sigma=1)
+
+                    # Expected value of outcome
+                    mu = alpha
+                    for i in ['off','def','pace']:
+
+                        if i == 'off':
+
+                            self.off_col_list = [j*3 for j in range(8)]
+                            x = features.iloc[:,self.off_col_list].values
+                            mu += pm.math.dot(x,beta_off)
+
+                        elif i == 'def':
+
+                            self.def_col_list = [j*3 + 1 for j in range(8)]
+                            x = features.iloc[:,self.def_col_list].values
+                            mu += pm.math.dot(x,beta_def)
+
+                        elif i == 'pace':
+
+                            self.pace_col_list = [j*3 + 2 for j in range(8)]
+                            x = features.iloc[:,self.pace_col_list].values
+                            mu += pm.math.dot(x,beta_pace)
+
+                    # Likelihood (sampling distribution) of observations
+                    Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=Y)
 
 
     #predict method
@@ -120,13 +178,31 @@ class Modelling(object):
 
         if self.model_type == 'Lasso' or self.model_type == 'Ridge':
             pred = self.reg.predict(features)
-        else:
+
+        elif self.prior=='basic':
+
             map_est = pm.find_MAP(model=self.basic_model)
             a = map_est['alpha']
             b = map_est['beta']
             pred = []
             for i,r in features.iterrows():
                 val = a + np.dot(r.values,b)
+                pred.append(val)
+
+            pred = np.array(pred)
+
+        else:
+            map_est = pm.find_MAP(model=self.prior_model)
+            alpha = map_est['alpha']
+            b_def = map_est['beta_def']
+            b_off = map_est['beta_off']
+            b_pace = map_est['beta_pace']
+            pred = []
+            for i,r in features.iterrows():
+                val = copy.copy(alpha)
+                val += np.dot(r[self.off_col_list].values,b_off)
+                val += np.dot(r[self.def_col_list].values,b_def)
+                val += np.dot(r[self.pace_col_list].values,b_pace)
                 pred.append(val)
 
             pred = np.array(pred)
@@ -145,7 +221,7 @@ def test():
 
     #set the model specificiations here
     period = 1
-    model_type = 'MAP'
+    model_type = 'MAP-basic'
     hp_dict = {'alpha':.08}
     feature_classes = ['e-off-rating','e-def-rating','e-pace']
 

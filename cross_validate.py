@@ -159,6 +159,17 @@ def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normal
     print(f'Average Profit: {ave_profit_under}')
     print(f'Average Absolute Prediciton Error: {ave_error}')
 
+    print("WINS")
+    print(under_wins_total + over_wins_total)
+    print("LOSSES")
+    print(under_losses_total + over_losses_total)
+    print("N")
+    print(under_wins_total + over_wins_total + under_losses_total + over_losses_total)
+    print("WIN%")
+    print((under_wins_total + over_wins_total)/(under_wins_total + over_wins_total + under_losses_total + over_losses_total))
+    print("PROFIT")
+    print((ave_profit_under + ave_profit_over)/1000)
+
     #return (ave_error,ave_profit_over,winper_over,ave_profit_under,winper_under)
 
 
@@ -171,11 +182,11 @@ def main():
     end_game = 82
     vegas_years = ['2013-14','2014-15','2015-16','2016-17','2017-18','2018-19']
     first_feature = 'gp_all_0_a'
-    model_type = 'MAP'
+    model_type = 'MAP-basic'
     hp_dict = {'alpha':.1}
-    feature_classes = 'all'#['e-off-rating','e-def-rating','e-pace']
+    feature_classes = ['e-off-rating','e-def-rating','e-pace']
     thresh = 1
-    period = 2
+    period = 4
 
     my_model = Modelling(period = period,model_type = model_type,feature_classes = feature_classes,\
     remove_features = [],restrict_features = [],hp_dict = hp_dict,normalize=False)

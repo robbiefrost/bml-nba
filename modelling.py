@@ -5,12 +5,15 @@ from functions import *
 from sklearn.preprocessing import *
 from sklearn import linear_model
 import pymc3 as pm
+import seaborn as sns
+import theano
 import copy
 
 
 class Modelling(object):
 
-    def __init__(self,period,model_type,feature_classes,remove_features,restrict_features,hp_dict,normalize):
+    def __init__(self,period,model_type,feature_classes,remove_features,restrict_features,\
+    hp_dict,normalize,trace_samp,burn_in,post_samp,chains,cores):
 
         self.period = period
         self.model_type = model_type
@@ -19,7 +22,11 @@ class Modelling(object):
         self.restrict_features = restrict_features
         self.hp_dict = hp_dict
         self.normalize = normalize
-
+        self.trace_samp = trace_samp
+        self.burn_in = burn_in
+        self.post_samp = post_samp
+        self.chains = chains
+        self.cores = cores
 
         #selct model type
         if model_type == 'Lasso':
@@ -78,11 +85,23 @@ class Modelling(object):
 
             self.reg.fit(features,Y)
 
+
         else:
-            prior = self.model_type.split('-')[-1]
+            x = features.values
+            model_split = self.model_type.split('-')
+            cat = model_split[0]
+            prior = model_split[1]
             self.prior = prior
+            self.cat = cat
+
             if prior == 'basic':
-                x = features.values
+
+                if cat == 'bayes':
+
+                    print("x shape" , x.shape)
+                    self.x_shared = theano.shared(x)
+                    self.y_shared = theano.shared(Y.values)
+                    print("Y shape", Y.values.shape)
 
                 self.basic_model = pm.Model()
 
@@ -92,11 +111,15 @@ class Modelling(object):
                     beta = pm.Normal('beta', mu=0, sigma=1, shape=x.shape[1])
                     sigma = pm.HalfNormal('sigma', sigma=1)
 
-                    # Expected value of outcome
-                    mu = alpha + pm.math.dot(x,beta)
+                    if cat == 'MAP':
 
-                    # Likelihood (sampling distribution) of observations
-                    Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=Y)
+                        mu = alpha + pm.math.dot(x,beta)
+                        Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=Y)
+
+                    elif cat == 'bayes':
+                        mu = alpha + pm.math.dot(self.x_shared,beta)
+                        Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=self.y_shared)
+                        self.trace = pm.sample(self.trace_samp, step=pm.NUTS(), chains=self.chains, cores=self.cores, tune=self.burn_in)
             else:
                 cols = features.columns
 
@@ -179,7 +202,26 @@ class Modelling(object):
         if self.model_type == 'Lasso' or self.model_type == 'Ridge':
             pred = self.reg.predict(features)
 
-        elif self.prior=='basic':
+        elif self.cat == 'bayes' and self.prior == 'basic':
+            pred = []
+
+            c = 0
+            with self.basic_model:
+                for i,r in features.iterrows():
+                    c += 1
+                    print(f'generating post pred for game {c}/{features.shape[0]}')
+                    new_x = r.values
+                    self.x_shared.set_value([new_x])
+                    self.y_shared.set_value([0])
+                    post_pred = pm.sample_posterior_predictive(self.trace, samples=self.post_samp)
+                    vals = post_pred['Y_obs']
+                    print(vals.mean())
+                    pred.append(vals)
+
+                    if c > 2:
+                        exit()
+
+        elif self.cat == 'MAP' and self.prior=='basic':
 
             map_est = pm.find_MAP(model=self.basic_model)
             a = map_est['alpha']
@@ -221,13 +263,20 @@ def test():
 
     #set the model specificiations here
     period = 1
-    model_type = 'MAP-basic'
+    model_type = 'bayes-basic'
     hp_dict = {'alpha':.08}
     feature_classes = ['e-off-rating','e-def-rating','e-pace']
+    trace_samp = 2000
+    burn_in = 1000
+    post_samp = 500
+    chains = 4
+    cores = 1
 
     my_model = Modelling(period=period,model_type=model_type,feature_classes=feature_classes,remove_features=[]\
-    ,restrict_features=[],hp_dict=hp_dict,normalize=False)
+    ,restrict_features=[],hp_dict=hp_dict,normalize=False,trace_samp=trace_samp,burn_in=burn_in,post_samp=post_samp,
+    chains=chains,cores=cores)
 
+    print(df.shape)
     my_model.train(df,'gp_all_0_a')
     pred = my_model.predict(df[-100:])
     print(pred)

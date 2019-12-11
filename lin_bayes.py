@@ -72,7 +72,7 @@ def build_prior_model(prior,features,x,y):
         if prior == 'normal':
             beta_def = pm.Normal('beta_def', mu=-.25, sigma=.25, shape=8)
             beta_off = pm.Normal('beta_off', mu=.25, sigma=.25, shape=8)
-            beta_pace =pm.Normal('beta_pace', mu=.25, sigma=.25, shape=8)
+            beta_pace = pm.Normal('beta_pace', mu=.25, sigma=.25, shape=8)
 
         if prior == 'uniform':
             beta_def = pm.Uniform('beta_def', upper = 0, lower = -.5, shape=8)
@@ -124,7 +124,6 @@ def fit_model(model):
         pm.plot_posterior(trace)
         pm.traceplot(trace)
 
-#model = run_prior_model('normal')
 features,x,y,df_test = prep_data()
 #model,off_col_list,def_col_list,pace_col_list = build_prior_model('normal',features,x,y)
 model = build_basic_model(features,x,y)

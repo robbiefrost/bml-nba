@@ -217,10 +217,7 @@ class Modelling(object):
                     vals = post_pred['Y_obs']
                     print(vals.mean())
                     pred.append(vals)
-
-                    if c > 2:
-                        exit()
-
+                    
         elif self.cat == 'MAP' and self.prior=='basic':
 
             map_est = pm.find_MAP(model=self.basic_model)

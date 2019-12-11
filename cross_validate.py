@@ -53,7 +53,7 @@ def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normal
         num_seasons += 1
 
         df_train = df[df['season'] != season]
-        df_test = df[df['season'] == season][0:10]
+        df_test = df[df['season'] == season]
 
         my_model.train(df_train,first_feature)
         pred = my_model.predict(df_test)

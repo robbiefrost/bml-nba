@@ -8,7 +8,26 @@ import pymc3 as pm
 import seaborn as sns
 import theano
 import copy
+import torch
+torch.set_default_tensor_type(torch.cuda.FloatTensor)
+import gpytorch
+import numpy as np
 
+class GPModelSKI(gpytorch.models.ExactGP):
+    def __init__(self, train_x, train_y, likelihood,kernel):
+        super(GPModelSKI, self).__init__(train_x, train_y, likelihood)
+        self.mean_module = gpytorch.means.ConstantMean()
+        self.mean_module.initialize(constant=50.)
+        self.covar_module = gpytorch.kernels.AdditiveStructureKernel(
+            gpytorch.kernels.GridInterpolationKernel(
+                gpytorch.kernels.ScaleKernel(kernel)
+                , grid_size=1000, num_dims=1)
+            , num_dims=train_x.shape[1])
+
+    def forward(self, x):
+        mean_x = self.mean_module(x)
+        covar_x = self.covar_module(x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 class Modelling(object):
 
@@ -120,7 +139,53 @@ class Modelling(object):
                         mu = alpha + pm.math.dot(self.x_shared,beta)
                         Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=self.y_shared)
                         self.trace = pm.sample(self.trace_samp, step=pm.NUTS(), chains=self.chains, cores=self.cores, tune=self.burn_in)
-            else:
+
+            elif cat == 'bayes' and prior == 'normal':
+
+                print("x shape" , x.shape)
+                self.x_shared = theano.shared(x)
+                self.y_shared = theano.shared(Y.values)
+                print("Y shape", Y.values.shape)
+
+                self.basic_model = pm.Model()
+
+                with self.basic_model:
+
+                    alpha = pm.Normal('alpha', mu=0, sigma=10)
+
+                    beta_def = pm.Normal('beta_def', mu=-.25, sigma=.25, shape=8)
+                    beta_off = pm.Normal('beta_off', mu=.25, sigma=.25, shape=8)
+                    beta_pace =pm.Normal('beta_pace', mu=.25, sigma=.25, shape=8)
+
+                    sigma = pm.HalfNormal('sigma', sigma=1)
+
+                    mu = alpha
+                    for i in ['off','def','pace']:
+
+                        if i == 'off':
+
+                            off_col_list = [j*3 for j in range(8)]
+                            x_off = self.x_shared[:,off_col_list]
+                            mu += theano.tensor.dot(x_off,beta_off)
+
+                        elif i == 'def':
+
+                            def_col_list = [j*3 + 1 for j in range(8)]
+                            x_def = self.x_shared[:,def_col_list]
+                            mu += theano.tensor.dot(x_def,beta_def)
+
+                        elif i == 'pace':
+
+                            pace_col_list = [j*3 + 2 for j in range(8)]
+                            x_pace = self.x_shared[:,pace_col_list]
+                            mu += theano.tensor.dot(x_pace,beta_pace)
+
+                    # Likelihood (sampling distribution) of observations
+                    Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=self.y_shared)
+                    self.trace = pm.sample(self.trace_samp, step=pm.Slice(), chains=self.chains, cores=self.cores, tune=self.burn_in)
+
+
+            elif cat == 'MAP':
                 cols = features.columns
 
                 print('building model with prior:', prior)
@@ -166,6 +231,8 @@ class Modelling(object):
 
                             self.def_col_list = [j*3 + 1 for j in range(8)]
                             x = features.iloc[:,self.def_col_list].values
+                            print("X SHAPE", x.shape)
+                            exit()
                             mu += pm.math.dot(x,beta_def)
 
                         elif i == 'pace':
@@ -177,6 +244,43 @@ class Modelling(object):
                     # Likelihood (sampling distribution) of observations
                     Y_obs = pm.Normal('Y_obs', mu=mu, sigma=sigma, observed=Y)
 
+            elif cat == 'GP':
+
+                train_x = torch.from_numpy(x).double()
+                train_y = torch.from_numpy(Y.values).double()
+                self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
+
+                if prior == 'RBF':
+                    kernel = gpytorch.kernels.RBFKernel()
+                elif prior == 'Exponential':
+                    kernel = gpytorch.kernels.MaternKernel(nu=0.5)
+
+                self.gp_model = GPModelSKI(train_x,train_y,self.likelihood,kernel)
+
+                # Find optimal model hyperparameters
+                self.gp_model.double()
+                self.gp_model.train()
+                self.likelihood.train()
+
+                # Use the adam optimizer
+                optimizer = torch.optim.Adam([{'params': self.gp_model.parameters()}], lr=0.1)
+
+                # "Loss" for GPs - the marginal log likelihood
+                mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.gp_model)
+
+                print('training gp model...')
+                def gp_train(training_iter):
+                    for i in range(training_iter):
+                        optimizer.zero_grad()
+                        output = self.gp_model(train_x)
+                        loss = -mll(output, train_y)
+                        loss.backward()
+                        print('Iter %d/%d - Loss: %.3f' % (i + 1, training_iter, loss.item()), end='\r')
+                        optimizer.step()
+                    print('Iter %d/%d - Loss: %.3f' % (training_iter, training_iter, loss.item()))
+
+                with gpytorch.settings.use_toeplitz(False):
+                    gp_train(500)
 
     #predict method
     def predict(self,df_test):
@@ -185,6 +289,7 @@ class Modelling(object):
         features = df_test.iloc[:,index:]
         features = features[self.feature_cols]
         rows = features.shape[0]
+
         if self.normalize:
             data = []
             mm_scaler = MinMaxScaler()
@@ -202,9 +307,9 @@ class Modelling(object):
         if self.model_type == 'Lasso' or self.model_type == 'Ridge':
             pred = self.reg.predict(features)
 
-        elif self.cat == 'bayes' and self.prior == 'basic':
-            pred = []
+        elif self.cat == 'bayes':
 
+            pred = []
             c = 0
             with self.basic_model:
                 for i,r in features.iterrows():
@@ -215,9 +320,9 @@ class Modelling(object):
                     self.y_shared.set_value([0])
                     post_pred = pm.sample_posterior_predictive(self.trace, samples=self.post_samp)
                     vals = post_pred['Y_obs']
-                    print(vals.mean())
+                    print(f'predictive mean: {vals.mean()} , variance: {vals.var()}')
                     pred.append(vals)
-                    
+
         elif self.cat == 'MAP' and self.prior=='basic':
 
             map_est = pm.find_MAP(model=self.basic_model)
@@ -230,7 +335,7 @@ class Modelling(object):
 
             pred = np.array(pred)
 
-        else:
+        elif self.cat == 'MAP':
             map_est = pm.find_MAP(model=self.prior_model)
             alpha = map_est['alpha']
             b_def = map_est['beta_def']
@@ -246,6 +351,17 @@ class Modelling(object):
 
             pred = np.array(pred)
 
+        elif self.cat == 'GP':
+
+            test_x = torch.from_numpy(features.values).double()
+
+            self.gp_model.eval()
+            self.likelihood.eval()
+
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                ppc = self.likelihood(self.gp_model(test_x))
+                pred = ppc.sample(sample_shape=torch.Size([self.post_samp,])).cpu().numpy()
+
         return pred
 
 
@@ -260,11 +376,11 @@ def test():
 
     #set the model specificiations here
     period = 1
-    model_type = 'bayes-basic'
+    model_type = 'GP-RBF'
     hp_dict = {'alpha':.08}
     feature_classes = ['e-off-rating','e-def-rating','e-pace']
-    trace_samp = 2000
-    burn_in = 1000
+    trace_samp = 5000
+    burn_in = 200
     post_samp = 500
     chains = 4
     cores = 1
@@ -275,8 +391,9 @@ def test():
 
     print(df.shape)
     my_model.train(df,'gp_all_0_a')
-    pred = my_model.predict(df[-100:])
-    print(pred)
+    pred = my_model.predict(df[-10:])
+    print(pred.mean())
+
 
 def main():
     test()

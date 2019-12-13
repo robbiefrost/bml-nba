@@ -7,7 +7,7 @@ from functions import *
 from scipy.stats import norm
 import pymc3 as pm
 
-def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normalize):
+def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normalize,ppc):
 
     period = my_model.period
 
@@ -52,10 +52,17 @@ def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normal
         print(f'running season {season}')
         num_seasons += 1
 
-        df_train = df[df['season'] != season]
+        season_index = season_list.index(season)
+        train_list = season_list[season_index:]
+        df_train = df[~df['season'].isin(train_list)]
+        #df_train = df[df['season'] != season]
         df_test = df[df['season'] == season]
 
         my_model.train(df_train,first_feature)
+
+        if ppc:
+            return my_model.Pop_PC(df_test)
+
         pred = my_model.predict(df_test)
 
         count = 0
@@ -222,17 +229,17 @@ def main():
 
     start_game = 30
     end_game = 82
-    vegas_years = ['2013-14','2014-15','2015-16','2016-17','2017-18','2018-19']
-    #vegas_years = ['2018-19']
+    #vegas_years = ['2013-14','2014-15','2015-16','2016-17','2017-18','2018-19']
+    vegas_years = ['2018-19']
     first_feature = 'gp_all_0_a'
-    model_type = 'bayes-basic'
+    model_type = 'bayes-normal'
     hp_dict = {'alpha':.05}
-    feature_classes = ['e-off-rating','e-def-rating','e-pace']
-    thresh = .57
-    period = 1
-    trace_samp = 2000
-    burn_in = 1000
-    post_samp = 500
+    feature_classes = 'all'#['e-off-rating','e-def-rating','e-pace']
+    thresh = .6
+    period = 2
+    trace_samp = 5000
+    burn_in = 2000
+    post_samp = 1000
     chains = 4
     cores = 1
 
@@ -240,7 +247,11 @@ def main():
     ,restrict_features=[],hp_dict=hp_dict,normalize=False,trace_samp=trace_samp,burn_in=burn_in,post_samp=post_samp,
     chains=chains,cores=cores)
 
-    cross_validate(df,my_model,start_game,end_game,thresh,vegas_years,first_feature,normalize=False)
+    vals, mean, var = cross_validate(df,my_model,start_game,end_game,thresh,vegas_years,first_feature,normalize=False,ppc=True)
+    print(mean,var)
+    #cross_validate(df,my_model,start_game,end_game,thresh,vegas_years,first_feature,normalize=False,ppc=False)
+
+
 
 
 if __name__ == '__main__':

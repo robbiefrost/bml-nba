@@ -7,7 +7,7 @@ from functions import *
 from scipy.stats import norm
 import pymc3 as pm
 
-def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normalize):
+def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normalize,ppc):
 
     def print_season(*args, **kwargs):
         print(*args, **kwargs)
@@ -69,6 +69,11 @@ def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normal
         df_train = df[~df['season'].isin(train_list)]
         # df_train = df[df['season'] != season]
         df_test = df[df['season'] == season]
+
+        my_model.train(df_train,first_feature)
+
+        if ppc:
+            return my_model.Pop_PC(df_test)
 
         my_model.train(df_train, first_feature, my_model.model_type + '_' + str(my_model.period) + '_' + season)
         # if my_model.trace:
@@ -257,13 +262,17 @@ def main():
     burn_in = 1000
     post_samp = 1000
     chains = 4
-    cores = 4
+    cores = 1
 
     my_model = Modelling(period=period,model_type=model_type,feature_classes=feature_classes,remove_features=[]\
     ,restrict_features=[],hp_dict=hp_dict,normalize=False,trace_samp=trace_samp,burn_in=burn_in,post_samp=post_samp,
     chains=chains,cores=cores)
 
-    cross_validate(df,my_model,start_game,end_game,thresh,vegas_years,first_feature,normalize=False)
+    vals, mean, var = cross_validate(df,my_model,start_game,end_game,thresh,vegas_years,first_feature,normalize=False,ppc=True)
+    print(mean,var)
+    #cross_validate(df,my_model,start_game,end_game,thresh,vegas_years,first_feature,normalize=False,ppc=False)
+
+
 
 
 if __name__ == '__main__':

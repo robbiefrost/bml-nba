@@ -9,10 +9,24 @@ import seaborn as sns
 import theano
 import copy
 import torch
-torch.set_default_tensor_type(torch.cuda.FloatTensor)
+#torch.set_default_tensor_type(torch.cuda.FloatTensor)
 import gpytorch
 import numpy as np
 import os
+
+def calc_disc(ppc,true_y,func):
+
+    print("ppc shape", ppc.shape)
+    sum = 0
+    samp_size = ppc.shape[0]
+    for i in range(samp_size):
+
+        if func == 'mean':
+            sum += abs(ppc[i,:].mean() - true_y.mean())
+        elif func == 'std':
+            sum += abs(np.std(ppc[i,:]) - np.std(true_y))
+
+    return sum/samp_size
 
 class GPModelSKI(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood, kernel):
@@ -417,6 +431,28 @@ class Modelling(object):
 
         return pred
 
+
+    def Pop_PC(self,df_test):
+
+        index = list(df_test.columns).index(self.first_feature)
+        features = df_test.iloc[:,index:]
+        features = features[self.feature_cols]
+        new_x = features.values
+
+        Y = df_test[f'pts_qtr{self.period}_a'] + df_test[f'pts_qtr{self.period}_h']
+
+        with self.basic_model:
+            self.x_shared.set_value(new_x)
+            y_dummy = np.zeros(new_x.shape[0],dtype=int)
+            self.y_shared.set_value(y_dummy)
+            post_pred = pm.sample_posterior_predictive(self.trace, samples=self.post_samp)
+
+        vals = post_pred['Y_obs']
+        print(vals.shape)
+        mean = calc_disc(vals,Y.values,'mean')
+        std = calc_disc(vals,Y.values,'std')
+        print(mean,std)
+        return vals,mean,std
 
 def test():
 

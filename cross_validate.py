@@ -9,6 +9,18 @@ import pymc3 as pm
 
 def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normalize):
 
+    def print_season(*args, **kwargs):
+        print(*args, **kwargs)
+        out_file = './output/' + my_model.model_type + '_' + str(my_model.period) + '_' + season + '.out'
+        with open(out_file, 'a') as file:
+            print(*args, **kwargs, file=file)
+
+    def print_total(*args, **kwargs):
+        print(*args, **kwargs)
+        out_file = './output/' + my_model.model_type + '_' + str(my_model.period) + '_' + vegas_years[0][:5] + vegas_years[-1][-2:] + '_total.out'
+        with open(out_file, 'a') as file:
+            print(*args, **kwargs, file=file)
+
     period = my_model.period
 
     print(df.shape)
@@ -52,10 +64,15 @@ def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normal
         print(f'running season {season}')
         num_seasons += 1
 
-        df_train = df[df['season'] != season]
+        season_index = season_list.index(season)
+        train_list = season_list[season_index:]
+        df_train = df[~df['season'].isin(train_list)]
+        # df_train = df[df['season'] != season]
         df_test = df[df['season'] == season]
 
-        my_model.train(df_train,first_feature)
+        my_model.train(df_train, first_feature, my_model.model_type + '_' + str(my_model.period) + '_' + season)
+        # if my_model.trace:
+        #     pm.save_trace(my_model.trace, './trace/' + my_model.model_type + '_' + str(my_model.period) + '_' + season)
         pred = my_model.predict(df_test)
 
         count = 0
@@ -102,7 +119,7 @@ def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normal
             #calc error
             result  = result_dict['total']
 
-            if my_model.model_type.split('-')[0] == 'bayes':
+            if my_model.model_type.split('-')[0] in ['bayes', 'GP']:
 
                 samp = pred[count]
                 over = np.sum(samp >= vegas)
@@ -110,7 +127,7 @@ def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normal
                 over_perc = over/len(samp)
                 under_perc = under/len(samp)
 
-                print(f'vegas: {vegas}, predictive mean {samp.mean()}, under percentage: {under_perc}, over percentage: {over_perc}')
+                print_season(f'vegas: {vegas}, predictive mean {samp.mean()}, under percentage: {under_perc}, over percentage: {over_perc}')
                 error += abs(pred[count].mean() - result)
 
                 if vegas != 0 and season in vegas_years:
@@ -157,13 +174,13 @@ def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normal
 
         print(r['season'])
         if over_wins + over_losses > 0:
-            print(f'Over: -- wins: {over_wins} , losses: {over_losses}, win%: {over_wins/(over_wins+over_losses)}')
-            print(f'Profit: {1000*over_wins - 1110*over_losses}')
+            print_season(f'Over: -- wins: {over_wins} , losses: {over_losses}, win%: {over_wins/(over_wins+over_losses)}')
+            print_season(f'Profit: {1000*over_wins - 1110*over_losses}')
 
         print()
         if under_wins + under_losses > 0:
-            print(f'Under: -- wins: {under_wins} , losses: {under_losses}, win%: {under_wins/(under_wins+under_losses)}')
-            print(f'Profit: {1000*under_wins - 1100*under_losses}')
+            print_season(f'Under: -- wins: {under_wins} , losses: {under_losses}, win%: {under_wins/(under_wins+under_losses)}')
+            print_season(f'Profit: {1000*under_wins - 1100*under_losses}')
 
         print()
 
@@ -183,34 +200,37 @@ def cross_validate(df,my_model,start,end,thresh,vegas_years,first_feature,normal
     ave_profit_under = (1000*under_wins_total - 1100*under_losses_total)/len(vegas_years)
     ave_profit_over = (1000*over_wins_total - 1100*over_losses_total)/len(vegas_years)
     winper_over = over_wins_total/(over_wins_total+over_losses_total)
-    winper_under = under_wins_total/(under_wins_total+under_losses_total)
-    print(f'Number of Seasons: {num_seasons}')
-    print(f'Period: {period}')
-    print(f'my_model: Type - {my_model.model_type}')
-    print(f'HyperParams: {my_model.hp_dict}')
-    print(f'Thresh: {thresh}')
-    print(f'Normalize: {normalize}')
-    print(f'Feature Classes: {my_model.feature_classes}')
-    print(f'Remove Features: {my_model.remove_features}')
-    print(f'Restrict Features: {my_model.restrict_features}')
-    print(f'Over Total: -- wins: {over_wins_total} , losses: {over_losses_total}, win%: {winper_over}')
-    print(f'Average Profit: {ave_profit_over}')
-    print()
-    print(f'Under Total: -- wins: {under_wins_total} , losses: {under_losses_total}, win%: {winper_under}')
-    print(f'Average Profit: {ave_profit_under}')
-    print(f'Average Absolute Prediciton Error: {ave_error}')
+    try:
+        winper_under = under_wins_total/(under_wins_total+under_losses_total)
+    except (ZeroDivisionError):
+        winper_under = 0
+    print_total(f'Number of Seasons: {num_seasons}')
+    print_total(f'Period: {period}')
+    print_total(f'my_model: Type - {my_model.model_type}')
+    print_total(f'HyperParams: {my_model.hp_dict}')
+    print_total(f'Thresh: {thresh}')
+    print_total(f'Normalize: {normalize}')
+    print_total(f'Feature Classes: {my_model.feature_classes}')
+    print_total(f'Remove Features: {my_model.remove_features}')
+    print_total(f'Restrict Features: {my_model.restrict_features}')
+    print_total(f'Over Total: -- wins: {over_wins_total} , losses: {over_losses_total}, win%: {winper_over}')
+    print_total(f'Average Profit: {ave_profit_over}')
+    print_total()
+    print_total(f'Under Total: -- wins: {under_wins_total} , losses: {under_losses_total}, win%: {winper_under}')
+    print_total(f'Average Profit: {ave_profit_under}')
+    print_total(f'Average Absolute Prediciton Error: {ave_error}')
 
-    print("WINS")
-    print(under_wins_total + over_wins_total)
-    print("LOSSES")
-    print(under_losses_total + over_losses_total)
-    print("N")
-    print(under_wins_total + over_wins_total + under_losses_total + over_losses_total)
-    print("WIN%")
-    print((under_wins_total + over_wins_total)/(under_wins_total + over_wins_total + under_losses_total + over_losses_total))
-    print("PROFIT")
-    print((ave_profit_under + ave_profit_over)/1000)
-    print("AVERAGE VEGAS ERROR:" , ve_total/num_seasons)
+    print_total("WINS")
+    print_total(under_wins_total + over_wins_total)
+    print_total("LOSSES")
+    print_total(under_losses_total + over_losses_total)
+    print_total("N")
+    print_total(under_wins_total + over_wins_total + under_losses_total + over_losses_total)
+    print_total("WIN%")
+    print_total((under_wins_total + over_wins_total)/(under_wins_total + over_wins_total + under_losses_total + over_losses_total))
+    print_total("PROFIT")
+    print_total((ave_profit_under + ave_profit_over)/1000)
+    print_total("AVERAGE VEGAS ERROR:", ve_total/num_seasons)
 
     #return (ave_error,ave_profit_over,winper_over,ave_profit_under,winper_under)
 
@@ -222,19 +242,22 @@ def main():
 
     start_game = 30
     end_game = 82
-    vegas_years = ['2013-14','2014-15','2015-16','2016-17','2017-18','2018-19']
-    #vegas_years = ['2018-19']
+    # vegas_years = ['2013-14','2014-15','2015-16','2016-17','2017-18','2018-19']
+    vegas_years = ['2018-19']
     first_feature = 'gp_all_0_a'
     model_type = 'bayes-basic'
+    # model_type = 'GP-RBF'
     hp_dict = {'alpha':.05}
     feature_classes = ['e-off-rating','e-def-rating','e-pace']
+    # feature_classes = 'all'
+    # feature_classes = ['e-off-rating','e-def-rating','e-pace','ast-pct','oreb-pct','dreb-pct','tm-tov-pct','efg-pct','ts-pct'] # most features
     thresh = .57
     period = 1
     trace_samp = 2000
     burn_in = 1000
-    post_samp = 500
+    post_samp = 1000
     chains = 4
-    cores = 1
+    cores = 4
 
     my_model = Modelling(period=period,model_type=model_type,feature_classes=feature_classes,remove_features=[]\
     ,restrict_features=[],hp_dict=hp_dict,normalize=False,trace_samp=trace_samp,burn_in=burn_in,post_samp=post_samp,

@@ -1,0 +1,26 @@
+Number of Seasons: 6
+Period: 2
+my_model: Type - bayes-basic
+HyperParams: {'alpha': 0.05}
+Thresh: 0.57
+Normalize: False
+Feature Classes: ['e-off-rating', 'e-def-rating', 'e-pace']
+Remove Features: []
+Restrict Features: []
+Over Total: -- wins: 1350 , losses: 1157, win%: 0.5384922217790188
+Average Profit: 12883.333333333334
+
+Under Total: -- wins: 105 , losses: 84, win%: 0.5555555555555556
+Average Profit: 2100.0
+Average Absolute Prediciton Error: 6.393077735478393
+WINS
+1455
+LOSSES
+1241
+N
+2696
+WIN%
+0.5396884272997032
+PROFIT
+14.983333333333334
+AVERAGE VEGAS ERROR: 6.250067090642908

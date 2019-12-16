@@ -1,0 +1,26 @@
+Number of Seasons: 6
+Period: 4
+my_model: Type - GP-RBF
+HyperParams: {'alpha': 0.05}
+Thresh: 0.57
+Normalize: False
+Feature Classes: all
+Remove Features: []
+Restrict Features: []
+Over Total: -- wins: 807 , losses: 879, win%: 0.4786476868327402
+Average Profit: -26650.0
+
+Under Total: -- wins: 1202 , losses: 1111, win%: 0.5196714223951578
+Average Profit: -3350.0
+Average Absolute Prediciton Error: 7.071028862508392
+WINS
+2009
+LOSSES
+1990
+N
+3999
+WIN%
+0.5023755938984746
+PROFIT
+-30.0
+AVERAGE VEGAS ERROR: 6.873523836777877

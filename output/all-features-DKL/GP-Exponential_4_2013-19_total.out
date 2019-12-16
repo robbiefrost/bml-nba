@@ -1,0 +1,26 @@
+Number of Seasons: 6
+Period: 4
+my_model: Type - GP-Exponential
+HyperParams: {'alpha': 0.05}
+Thresh: 0.57
+Normalize: False
+Feature Classes: all
+Remove Features: []
+Restrict Features: []
+Over Total: -- wins: 698 , losses: 739, win%: 0.4857341684064022
+Average Profit: -19150.0
+
+Under Total: -- wins: 1340 , losses: 1235, win%: 0.5203883495145631
+Average Profit: -3083.3333333333335
+Average Absolute Prediciton Error: 7.065252396158717
+WINS
+2038
+LOSSES
+1974
+N
+4012
+WIN%
+0.5079760717846461
+PROFIT
+-22.23333333333333
+AVERAGE VEGAS ERROR: 6.873523836777877
